@@ -6,12 +6,12 @@ exports.searchJournals = async (req, res) => {
     const { filters = {} } = req.body;
 
     try {
-        // Debug logging for database selection
         console.log('Incoming filters:', filters);
 
         let dbToQuery;
-        if (filters.publisher && filters.publisher.length > 0) {
-            dbToQuery = getDatabasesForPublishers(filters.publisher);
+        // Fix: Change publisher to publishers to match the request structure
+        if (filters.publishers && filters.publishers.length > 0) {
+            dbToQuery = getDatabasesForPublishers(filters.publishers);
             console.log('Databases selected based on publishers:', dbToQuery);
         } else {
             dbToQuery = databases.filter(db => !['ugc.db', 'annex.db'].includes(db));
