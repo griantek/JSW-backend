@@ -6,27 +6,26 @@ const journalRoutes = require('./routes/journalRoutes');
 
 const app = express();
 
-// CORS configuration with error handling
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-    res.header('Access-Control-Allow-Credentials', true);
-    
-    // Handle preflight requests
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
-    next();
-});
+// CORS Configuration
+const corsOptions = {
+    origin: '*',  // Or specify your frontend domain
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: [
+        'Origin',
+        'X-Requested-With',
+        'Content-Type',
+        'Accept',
+        'Authorization',
+        'Access-Control-Allow-Headers'
+    ],
+    credentials: true
+};
 
 // Apply CORS middleware
-app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
-}));
+app.use(cors(corsOptions));
+
+// Handle preflight requests
+app.options('*', cors(corsOptions));
 
 app.use(bodyParser.json());
 app.use('/api/journals', journalRoutes);
