@@ -3,7 +3,8 @@ const { buildQuery } = require("../utils/queryBuilder");
 const { getTableName, getDatabasesForPublishers } = require("../utils/dbHelper");
 
 exports.searchJournals = async (req, res) => {
-    const { filters = {} } = req.body;
+    console.log('Received search request:', req.body);
+    const { filters = {}, sorting = null } = req.body;  // Extract sorting from root level
 
     try {
         console.log('Incoming filters:', filters);
@@ -38,7 +39,8 @@ exports.searchJournals = async (req, res) => {
 
             try {
                 const tableName = getTableName(db);
-                const { whereClause, params } = buildQuery(filters, db);
+                const { whereClause, params } = buildQuery(filters, db);  // Remove sorting parameter
+                // whereClause now includes both WHERE and ORDER BY clauses
                 const query = `SELECT * FROM ${tableName} ${whereClause}`;
 
                 console.log(`Querying ${db} with:`, { query, params });
@@ -51,6 +53,48 @@ exports.searchJournals = async (req, res) => {
                 console.error(`Error querying ${db}:`, error.message);
                 continue;
             }
+        }
+
+        // Sort combined results
+        if (sorting && sorting.field) {
+            const sortField = sorting.field.toLowerCase();
+            const sortOrder = sorting.order || 'desc';
+            
+            console.log('Sorting by:', sortField, 'in order:', sortOrder);
+            
+            results.sort((a, b) => {
+                let aVal, bVal;
+                
+                // Handle different field types
+                switch(sortField) {
+                    case 'impactfactor':
+                        aVal = parseFloat(a.impactFactor) || 0;
+                        bVal = parseFloat(b.impactFactor) || 0;
+                        break;
+                    case 'citescore':
+                        aVal = parseFloat(a.citeScore) || 0;
+                        bVal = parseFloat(b.citeScore) || 0;
+                        break;
+                    case 'title':
+                    case 'publisher':
+                        // Case-insensitive string comparison
+                        aVal = (a[sortField] || '').toLowerCase();
+                        bVal = (b[sortField] || '').toLowerCase();
+                        // Use localeCompare for proper string sorting
+                        return sortOrder === 'desc' 
+                            ? bVal.localeCompare(aVal)
+                            : aVal.localeCompare(bVal);
+                    default:
+                        aVal = a[sortField];
+                        bVal = b[sortField];
+                }
+                
+                // Numeric comparison for impact factor and cite score
+                if (sortOrder === 'desc') {
+                    return bVal - aVal;
+                }
+                return aVal - bVal;
+            });
         }
 
         res.status(200).json({

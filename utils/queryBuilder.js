@@ -170,21 +170,10 @@ const buildQuery = (filters, dbName) => {
         }
     }
 
-    // Get the impact factor field mapping for this database
-    const impactFactorMapping = fieldMappings.impactFactor.find((m) => m.db === dbName);
-    
-    // Construct the WHERE clause only if conditions exist
+    // Construct final query parts
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    
-    // Add ORDER BY clause with proper NULL handling for SQLite
-    const orderByClause = impactFactorMapping 
-        ? ` ORDER BY CASE 
-                WHEN ${impactFactorMapping.field} IS NULL OR ${impactFactorMapping.field} = '' THEN 0 
-                ELSE CAST(${impactFactorMapping.field} AS REAL) 
-            END DESC`
-        : "";
 
-    return { whereClause: whereClause + orderByClause, params };
+    return { whereClause, params };
 };
 
 module.exports = { buildQuery };
