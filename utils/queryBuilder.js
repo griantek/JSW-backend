@@ -12,6 +12,7 @@ const fieldMappings = {
         { db: "tandf_journal_details.db", field: "title" }
     ],
     link: [
+        { db: "elsevier_journals.db", field: "link" },  // Add this line
         { db: "emerald_journals.db", field: "link" },
         { db: "inderscience_journals.db", field: "link" },
         { db: "ugc.db", field: "link" },
