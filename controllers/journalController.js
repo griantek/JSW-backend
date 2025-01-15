@@ -55,6 +55,38 @@ exports.searchJournals = async (req, res) => {
             }
         }
 
+        // If quartile filtering is requested, apply it before sorting
+        if (filters.quartiles && filters.quartiles.length > 0) {
+            // First sort by impact factor desc for quartile calculation
+            results.sort((a, b) => {
+                const aVal = parseFloat(a.impactFactor) || 0;
+                const bVal = parseFloat(b.impactFactor) || 0;
+                return bVal - aVal;
+            });
+
+            // Calculate quartile ranges
+            const totalResults = results.length;
+            const quarterSize = Math.ceil(totalResults / 4);
+            
+            // Create quartile ranges
+            const quartileRanges = {
+                'Q1': [0, quarterSize],
+                'Q2': [quarterSize, quarterSize * 2],
+                'Q3': [quarterSize * 2, quarterSize * 3],
+                'Q4': [quarterSize * 3, totalResults]
+            };
+
+            // Filter results based on selected quartiles
+            const filteredResults = [];
+            filters.quartiles.forEach(quartile => {
+                const [start, end] = quartileRanges[quartile];
+                filteredResults.push(...results.slice(start, end));
+            });
+
+            // Replace results with filtered results
+            results = filteredResults;
+        }
+
         // Sort combined results
         if (sorting && sorting.field) {
             const sortField = sorting.field.toLowerCase();
