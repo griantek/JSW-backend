@@ -123,6 +123,7 @@ const normalizeResults = (dbName, data) => {
                 publisher: row.publisher,
                 citeScore: row.CiteScore,
                 subjectArea: row.SubjectArea,
+                indexed: row.indexed || '', // Add indexed field
             }));
         case "elsevier_journals.db":
             return data.map((row) => ({
@@ -133,6 +134,7 @@ const normalizeResults = (dbName, data) => {
                 impactFactor: row.impact_factor, // Updated field name
                 aimsAndScope: row.aims_and_scope, // Updated field name
                 link: row.link, // Added field for consistency
+                indexed: row.indexed || '', // Add indexed field
             }));
         case "emerald_journals.db":
             return data.map((row) => ({
@@ -143,6 +145,7 @@ const normalizeResults = (dbName, data) => {
                 impactFactor: row.impact_factor, // Updated field name
                 aimsAndScope: row.aims_and_scope, // Updated field name
                 link: row.link, // Updated field name
+                indexed: row.indexed || '', // Add indexed field
             }));
         case "inderscience_journals.db":
             return data.map((row) => ({
@@ -153,6 +156,7 @@ const normalizeResults = (dbName, data) => {
                 impactFactor: row.impact_factor, // Updated field name
                 aimsAndScope: row.aims_and_scope, // Updated field name
                 link: row.link, // Updated field name
+                indexed: row.indexed || '', // Add indexed field
             }));
         case "ugc.db":
             return data.map((row) => ({
@@ -162,6 +166,7 @@ const normalizeResults = (dbName, data) => {
                 citeScore: row.CiteScore,
                 subjectArea: row.SubjectArea,
                 keywords: row.keywords,
+                indexed: row.indexed || '', // Add indexed field
             }));
         case "wiley_db.db":
             return data.map((row) => ({
@@ -173,6 +178,7 @@ const normalizeResults = (dbName, data) => {
                 aimsAndScope: row.aims_and_scope, // Updated field name
                 indexed: row.indexing, // Updated field name
                 link: row.link, // Updated field name
+                indexed: row.indexed || '', // Add indexed field
             }));
         case "world_scientific_journals.db":
             return data.map((row) => ({
@@ -182,7 +188,7 @@ const normalizeResults = (dbName, data) => {
                 citeScore: row.cite_score, // Updated field name
                 impactFactor: row.impact_factor, // Updated field name
                 aimsAndScope: row.aims_and_scope, // Updated field name
-                indexed: row.indexed, // Updated field name
+                indexed: row.indexed || '', // Add indexed field
                 link: row.link, // Updated field name
             }));
         case "springer_journals.db":
@@ -193,7 +199,7 @@ const normalizeResults = (dbName, data) => {
                 citeScore: row.cite_score, // Updated field name
                 impactFactor: row.impact_factor, // Updated field name
                 aimsAndScope: row.aims_and_scope, // Updated field name
-                indexed: row.indexed, // Updated field name
+                indexed: row.indexed || '', // Add indexed field
                 link: row.link, // Updated field name
             }));
         case "sage.db":
@@ -204,7 +210,7 @@ const normalizeResults = (dbName, data) => {
                 citeScore: row.cite_score, // Updated field name
                 impactFactor: row.impact_factor, // Updated field name
                 aimsAndScope: row.aims_and_scope, // Updated field name
-                indexed: row.indexed, // Updated field name
+                indexed: row.indexed || '', // Add indexed field
                 link: row.link, // Updated field name
             }));
         case "tandf_journal_details.db":
@@ -215,7 +221,7 @@ const normalizeResults = (dbName, data) => {
                 citeScore: row.cite_score, // Updated field name
                 impactFactor: row.impact_factor, // Updated field name
                 aimsAndScope: row.aims_and_scope, // Updated field name
-                indexed: row.indexed, // Updated field name
+                indexed: row.indexed || '', // Add indexed field
                 link: row.link, // Updated field name
             }));
         default:
