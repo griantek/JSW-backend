@@ -176,4 +176,5 @@ const buildQuery = (filters, dbName) => {
     return { whereClause, params };
 };
 
-module.exports = { buildQuery };
+// Update module exports to include fieldMappings
+module.exports = { buildQuery, fieldMappings };

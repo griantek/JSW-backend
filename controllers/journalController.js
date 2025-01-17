@@ -1,61 +1,202 @@
-const { queryDB, databases } = require("../services/dbService");
-const { buildQuery } = require("../utils/queryBuilder");
+const { queryDB, databases, getDatabaseIndex } = require("../services/dbService");
+const { buildQuery, fieldMappings } = require("../utils/queryBuilder"); // Add fieldMappings import
 const { getTableName, getDatabasesForPublishers } = require("../utils/dbHelper");
 
+// New helper function for batch ISSN processing
+const batchSearchISSNs = async (issns, db) => {
+    try {
+        const tableName = getTableName(db);
+        const issnField = fieldMappings.issn.find(m => m.db === db);
+        
+        if (!issnField) return [];
+
+        // Create parameterized query for multiple ISSNs
+        const placeholders = issns.map(() => `${issnField.field} LIKE ?`).join(' OR ');
+        const query = `SELECT * FROM ${tableName} WHERE ${placeholders}`;
+        const params = issns.map(issn => `%${issn}%`);
+        
+        console.log(`Batch searching ${issns.length} ISSNs in ${db}`);
+        const results = await queryDB(databases.indexOf(db), query, params);
+        return normalizeResults(db, results);
+    } catch (error) {
+        console.error(`Error in batch ISSN search for ${db}:`, error);
+        return [];
+    }
+};
+
 exports.searchJournals = async (req, res) => {
-    console.log('Received search request:', req.body);
-    const { filters = {}, sorting = null } = req.body;  // Extract sorting from root level
+    const { filters = {}, sorting = null } = req.body;
 
     try {
-        console.log('Incoming filters:', filters);
+        let results = [];
+        let dbToQuery = [];
 
-        let dbToQuery;
-        // Fix: Change publisher to publishers to match the request structure
+        if (filters.databases && filters.databases.includes('Annexure')) {
+            // Get initial results from annex.db
+            const db = 'annex.db';
+            try {
+                const dbIndex = getDatabaseIndex(db);
+                const tableName = getTableName(db);
+                const { whereClause, params } = buildQuery(filters, db);
+                const query = `SELECT * FROM ${tableName} ${whereClause}`;
+
+                const annexResults = await queryDB(dbIndex, query, params);
+                const annexEntries = normalizeResults(db, annexResults);
+                
+                // Get unique ISSNs from annex results
+                const uniqueIssns = [...new Set(annexEntries
+                    .map(entry => entry.issn)
+                    .filter(issn => issn)
+                )];
+
+                if (uniqueIssns.length > 0) {
+                    // Determine which databases to search based on publishers filter
+                    let targetDbs;
+                    if (filters.publishers && filters.publishers.length > 0) {
+                        // Get databases corresponding to selected publishers
+                        targetDbs = getDatabasesForPublishers(filters.publishers);
+                        console.log('Targeting specific publishers:', filters.publishers);
+                        console.log('Using databases:', targetDbs);
+                    } else {
+                        // If no publishers specified, search all databases except annex and ugc
+                        targetDbs = databases.filter(d => d !== 'annex.db' && d !== 'ugc.db');
+                    }
+
+                    // Batch process ISSNs
+                    const batchSize = 50;
+                    const issnBatches = [];
+                    for (let i = 0; i < uniqueIssns.length; i += batchSize) {
+                        issnBatches.push(uniqueIssns.slice(i, i + batchSize));
+                    }
+
+                    // Process each database in parallel with batched ISSNs
+                    const issnResults = await Promise.all(
+                        targetDbs.map(async (dbName) => {
+                            const dbResults = await Promise.all(
+                                issnBatches.map(batch => batchSearchISSNs(batch, dbName))
+                            );
+                            return dbResults.flat();
+                        })
+                    );
+
+                    results = issnResults.flat();
+                }
+
+                return res.status(200).json({
+                    success: true,
+                    data: results,
+                    totalResults: results.length,
+                    queriedDatabases: filters.publishers && filters.publishers.length > 0 
+                        ? getDatabasesForPublishers(filters.publishers) 
+                        : databases.filter(d => d !== 'annex.db' && d !== 'ugc.db'),
+                    isAnnexure: true
+                });
+            } catch (error) {
+                console.error(`Error in Annexure search:`, error);
+                throw error;
+            }
+        }
+
+        // Determine which databases to query
         if (filters.publishers && filters.publishers.length > 0) {
             dbToQuery = getDatabasesForPublishers(filters.publishers);
-            console.log('Databases selected based on publishers:', dbToQuery);
+        } else if (!filters.databases || filters.databases.length === 0) {
+            // If no specific databases selected, include all databases including annex.db
+            dbToQuery = databases;
+        } else if (filters.databases.includes('Annexure')) {
+            // If Annexure is specifically selected
+            dbToQuery = ['annex.db'];
         } else {
+            // Other specific databases selected
             dbToQuery = databases.filter(db => !['ugc.db', 'annex.db'].includes(db));
-            console.log('Using default database list:', dbToQuery);
         }
 
-        if (dbToQuery.length === 0) {
-            console.warn('No databases selected for querying');
-            return res.status(200).json({
-                success: true,
-                data: [],
-                totalResults: 0,
-                message: 'No matching databases found for the selected publishers'
-            });
-        }
+        console.log('Using database list:', dbToQuery);
 
-        let results = [];
+        // Process each database
         for (const db of dbToQuery) {
-            const dbIndex = databases.indexOf(db);
-            if (dbIndex === -1) {
-                console.warn(`Database ${db} not found in available databases list`);
-                continue;
-            }
-
             try {
+                const dbIndex = getDatabaseIndex(db);
                 const tableName = getTableName(db);
-                const { whereClause, params } = buildQuery(filters, db);  // Remove sorting parameter
-                // whereClause now includes both WHERE and ORDER BY clauses
+                const { whereClause, params } = buildQuery(filters, db);
                 const query = `SELECT * FROM ${tableName} ${whereClause}`;
 
                 console.log(`Querying ${db} with:`, { query, params });
-
                 const dbResults = await queryDB(dbIndex, query, params);
-                console.log(`Retrieved ${dbResults.length} results from ${db}`);
+                
+                if (db === 'annex.db' && dbResults.length > 0) {
+                    // For annex.db results, perform ISSN-based search in other databases
+                    const annexEntries = normalizeResults(db, dbResults);
+                    const uniqueIssns = [...new Set(annexEntries
+                        .map(entry => entry.issn)
+                        .filter(issn => issn)
+                    )];
 
-                results = results.concat(normalizeResults(db, dbResults));
+                    if (uniqueIssns.length > 0) {
+                        const otherDbs = databases.filter(d => d !== 'annex.db' && d !== 'ugc.db');
+                        const batchSize = 50;
+                        const issnBatches = [];
+                        
+                        for (let i = 0; i < uniqueIssns.length; i += batchSize) {
+                            issnBatches.push(uniqueIssns.slice(i, i + batchSize));
+                        }
+
+                        // Process each database in parallel with batched ISSNs
+                        const issnResults = await Promise.all(
+                            otherDbs.map(async (dbName) => {
+                                const dbResults = await Promise.all(
+                                    issnBatches.map(batch => batchSearchISSNs(batch, dbName))
+                                );
+                                return dbResults.flat();
+                            })
+                        );
+
+                        // Add ISSN-matched results to the main results array
+                        results = results.concat(issnResults.flat());
+                    }
+                } else {
+                    // For non-annex databases, add results directly
+                    results = results.concat(normalizeResults(db, dbResults));
+                }
             } catch (error) {
                 console.error(`Error querying ${db}:`, error.message);
                 continue;
             }
         }
 
-        // If quartile filtering is requested, apply it before sorting
+        // Enhanced deduplication with logging
+        const seenEntries = new Map();
+        const duplicates = [];
+        
+        results.forEach(item => {
+            const key = item.issn + item.publisher;
+            if (seenEntries.has(key)) {
+                duplicates.push({
+                    issn: item.issn,
+                    title: item.title,
+                    publisher: item.publisher,
+                    existing: seenEntries.get(key).title
+                });
+            } else {
+                seenEntries.set(key, item);
+            }
+        });
+
+        // Log duplicates if any found
+        // if (duplicates.length > 0) {
+        //     console.log('\nDuplicate entries found:');
+        //     duplicates.forEach(dup => {
+        //         console.log(`ISSN: ${dup.issn}`);
+        //         console.log(`Title 1: ${dup.title}`);
+        //         console.log(`Title 2: ${dup.existing}`);
+        //         console.log(`Publisher: ${dup.publisher}\n`);
+        //     });
+        // }
+
+        // Set results to unique entries
+        results = Array.from(seenEntries.values());
+
+        // Apply quartile filtering if requested
         if (filters.quartiles && filters.quartiles.length > 0) {
             // First sort by impact factor desc for quartile calculation
             results.sort((a, b) => {
@@ -87,7 +228,7 @@ exports.searchJournals = async (req, res) => {
             results = filteredResults;
         }
 
-        // Sort combined results
+        // Apply sorting to combined results
         if (sorting && sorting.field) {
             const sortField = sorting.field.toLowerCase();
             const sortOrder = sorting.order || 'desc';
@@ -129,12 +270,14 @@ exports.searchJournals = async (req, res) => {
             });
         }
 
-        res.status(200).json({
+        return res.status(200).json({
             success: true,
             data: results,
             totalResults: results.length,
-            queriedDatabases: dbToQuery
+            queriedDatabases: dbToQuery,
+            isAnnexure: dbToQuery.includes('annex.db')
         });
+
     } catch (error) {
         console.error('Error searching journals:', error);
         res.status(500).json({
@@ -153,9 +296,12 @@ const normalizeResults = (dbName, data) => {
                 title: row.title,
                 issn: row.issn,
                 publisher: row.publisher,
-                citeScore: row.CiteScore,
-                subjectArea: row.SubjectArea,
-                indexed: row.indexed || '', // Add indexed field
+                citeScore: row.cite_score,    // Fixed field name to match db
+                impactFactor: row.impact_factor,  // Added impact factor
+                aimsAndScope: row.aims_and_scope, // Added aims and scope
+                indexed: row.indexed || '',
+                link: row.link || '',         // Added link field
+                subjectArea: row.subject_area // Fixed field name to match db
             }));
         case "elsevier_journals.db":
             return data.map((row) => ({
