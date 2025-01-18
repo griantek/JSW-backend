@@ -12,8 +12,11 @@ const databases = [
     'wiley_db.db',
     'world_scientific_journals.db',
     'springer_journals.db',
-    'ugc.db'     // Add ugc.db to the list
+    'ugc.db'     // Keep ugc.db in main list but remove journal_details.db
 ];
+
+// Add a new constant for fallback databases
+const fallbackDatabases = ['journal_details.db', 'ugc.db'];
 
 const queryDB = (dbIndex, query, params) => {
     // Validate dbIndex
@@ -50,6 +53,31 @@ const queryDB = (dbIndex, query, params) => {
     });
 };
 
+// Add a separate function for fallback database queries without index validation
+const queryFallbackDB = (dbName, query, params) => {
+    const dbFilePath = path.join(__dirname, '..', 'db', dbName);
+    
+    return new Promise((resolve, reject) => {
+        const db = new sqlite3.Database(dbFilePath, (err) => {
+            if (err) {
+                reject(new Error(`Failed to connect to fallback database ${dbName}: ${err.message}`));
+                return;
+            }
+            
+            db.all(query, params, (err, rows) => {
+                if (err) {
+                    db.close();
+                    reject(new Error(`Query error in ${dbName}: ${err.message}`));
+                    return;
+                }
+                
+                db.close();
+                resolve(rows);
+            });
+        });
+    });
+};
+
 // Add helper function to get database index
 const getDatabaseIndex = (dbName) => {
     const index = databases.indexOf(dbName);
@@ -59,4 +87,11 @@ const getDatabaseIndex = (dbName) => {
     return index;
 };
 
-module.exports = { queryDB, databases, getDatabaseIndex };
+// Make sure to export all functions and constants
+module.exports = { 
+    queryDB,
+    queryFallbackDB,  // Make sure this is exported
+    databases,
+    fallbackDatabases,
+    getDatabaseIndex
+};

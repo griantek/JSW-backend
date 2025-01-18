@@ -9,7 +9,8 @@ const fieldMappings = {
         { db: "world_scientific_journals.db", field: "title" },
         { db: "springer_journals.db", field: "title" },
         { db: "sage.db", field: "title" },
-        { db: "tandf_journal_details.db", field: "title" }
+        { db: "tandf_journal_details.db", field: "title" },
+        { db: "journal_details.db", field: "title" }  // Add mapping for journal_details.db
     ],
     link: [
         { db: "elsevier_journals.db", field: "link" },  // Add this line
@@ -110,23 +111,39 @@ const buildQuery = (filters, dbName) => {
     // Handle search fields
     if (filters.searchText && filters.searchFields && filters.searchFields.length > 0) {
         const searchConditions = [];
+        const searchFields = filters.searchFields.map(f => f.toLowerCase());
 
-        filters.searchFields.forEach((field) => {
-            // Map common variations of field names
-            let mappedField = field.toLowerCase();
-            if (mappedField === "aims & scope" || mappedField === "aims and scope") {
-                mappedField = "aimsAndScope";
+        // Handle title search
+        if (searchFields.includes('title')) {
+            const titleMapping = fieldMappings.title.find(m => m.db === dbName);
+            if (titleMapping) {
+                // If "aims & scope" is also selected, include both in one condition
+                if (searchFields.includes('aims & scope') || searchFields.includes('aims and scope')) {
+                    const aimsMapping = fieldMappings.aimsAndScope.find(m => m.db === dbName);
+                    if (aimsMapping) {
+                        searchConditions.push(`(${titleMapping.field} LIKE ? OR ${aimsMapping.field} LIKE ?)`);
+                        params.push(`%${filters.searchText}%`, `%${filters.searchText}%`);
+                    } else {
+                        searchConditions.push(`${titleMapping.field} LIKE ?`);
+                        params.push(`%${filters.searchText}%`);
+                    }
+                } else {
+                    // Title only search
+                    searchConditions.push(`${titleMapping.field} LIKE ?`);
+                    params.push(`%${filters.searchText}%`);
+                }
             }
-            
-            const fieldMapping = fieldMappings[mappedField]?.find((m) => m.db === dbName);
-            if (fieldMapping) {
-                searchConditions.push(`${fieldMapping.field} LIKE ?`);
+        // Handle aims & scope only if title is not selected (though this case shouldn't occur)
+        } else if (searchFields.includes('aims & scope') || searchFields.includes('aims and scope')) {
+            const aimsMapping = fieldMappings.aimsAndScope.find(m => m.db === dbName);
+            if (aimsMapping) {
+                searchConditions.push(`${aimsMapping.field} LIKE ?`);
                 params.push(`%${filters.searchText}%`);
             }
-        });
+        }
 
         if (searchConditions.length > 0) {
-            conditions.push(`(${searchConditions.join(" OR ")})`);
+            conditions.push(searchConditions.join(" AND "));
         }
     }
 

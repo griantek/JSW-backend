@@ -1,4 +1,10 @@
-const { queryDB, databases, getDatabaseIndex } = require("../services/dbService");
+const { 
+    queryDB, 
+    databases, 
+    getDatabaseIndex, 
+    fallbackDatabases, 
+    queryFallbackDB  // Make sure this is imported
+} = require("../services/dbService");
 const { buildQuery, fieldMappings } = require("../utils/queryBuilder"); // Add fieldMappings import
 const { getTableName, getDatabasesForPublishers } = require("../utils/dbHelper");
 
@@ -24,8 +30,77 @@ const batchSearchISSNs = async (issns, db) => {
     }
 };
 
+// Add new helper function at the top
+const performFallbackSearch = async (filters) => {
+    console.log('\n=== Starting Fallback Search Process ===');
+    console.log('Original filters:', JSON.stringify(filters, null, 2));
+    
+    let fallbackResults = [];
+    let dbsToSearch = [];
+
+    // Clone filters and modify for fallback search
+    const fallbackFilters = { ...filters };
+    
+    // Ensure search text and fields are preserved for fallback
+    if (filters.searchText && (!filters.searchFields || filters.searchFields.length === 0)) {
+        fallbackFilters.searchFields = ['title'];
+    }
+
+    // Remove database-specific filters for initial search
+    delete fallbackFilters.databases;
+
+    // Determine which fallback databases to query
+    if (!filters.databases || filters.databases.length === 0) {
+        console.log('No specific databases requested, will search in both UGC and Scopus');
+        dbsToSearch = fallbackDatabases;
+    } else {
+        if (filters.databases.includes('UGC')) {
+            dbsToSearch.push('ugc.db');
+        }
+        if (filters.databases.includes('Scopus')) {
+            dbsToSearch.push('journal_details.db');
+        }
+    }
+
+    console.log('Will search in following databases:', dbsToSearch);
+
+    // Perform fallback search
+    for (const db of dbsToSearch) {
+        try {
+            console.log(`\n--- Processing database: ${db} ---`);
+            
+            const tableName = getTableName(db);
+            console.log('Table name:', tableName);
+            
+            const { whereClause, params } = buildQuery(fallbackFilters, db);
+            const query = `SELECT * FROM ${tableName} ${whereClause}`;
+            
+            console.log('Executing fallback query:', query);
+            console.log('With parameters:', params);
+
+            // Use queryFallbackDB instead of queryDB
+            const results = await queryFallbackDB(db, query, params);
+            console.log(`Found ${results.length} results in ${db}`);
+
+            const normalizedResults = normalizeResults(db, results);
+            console.log(`Normalized ${normalizedResults.length} results`);
+            
+            fallbackResults = fallbackResults.concat(normalizedResults);
+
+        } catch (error) {
+            console.error(`Error in fallback search for ${db}:`, error);
+        }
+    }
+
+    console.log(`\n=== Fallback Search Complete ===`);
+    console.log(`Total results found: ${fallbackResults.length}`);
+    
+    return fallbackResults;
+};
+
 exports.searchJournals = async (req, res) => {
     const { filters = {}, sorting = null } = req.body;
+    console.log(' Request body:', req.body);
 
     try {
         let results = [];
@@ -164,6 +239,13 @@ exports.searchJournals = async (req, res) => {
             }
         }
 
+        // If no results found, try fallback search
+        if (results.length === 0) {
+            console.log('No results found in primary search, attempting fallback search...');
+            const fallbackResults = await performFallbackSearch(filters);
+            results = fallbackResults;
+        }
+
         // Enhanced deduplication with logging
         const seenEntries = new Map();
         const duplicates = [];
@@ -275,6 +357,7 @@ exports.searchJournals = async (req, res) => {
             data: results,
             totalResults: results.length,
             queriedDatabases: dbToQuery,
+            usedFallback: results.length > 0 && dbToQuery.length === 0,
             isAnnexure: dbToQuery.includes('annex.db')
         });
 
@@ -401,6 +484,17 @@ const normalizeResults = (dbName, data) => {
                 aimsAndScope: row.aims_and_scope, // Updated field name
                 indexed: row.indexed || '', // Add indexed field
                 link: row.link, // Updated field name
+            }));
+        case "journal_details.db":
+            return data.map((row) => ({
+                title: row.title,
+                issn: row.issn,
+                publisher: row.publisher,
+                citeScore: row.cite_score,
+                impactFactor: row.impact_factor,
+                aimsAndScope: row.aims_and_scope,
+                indexed: "Scopus",
+                link: row.link || ''
             }));
         default:
             return [];

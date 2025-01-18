@@ -3,7 +3,8 @@ const {  databases } = require("../services/dbService");
 exports.getTableName = (dbName) => {
     const tableMapping = {
         "annex.db": "journals",
-        "ugc.db": "journals",
+        "ugc.db": "journals",  // Updated to journal_details
+        "journal_details.db": "journal_details",  // Added journal_details.db mapping
         "wiley_db.db": "journals",
         "elsevier_journals.db": "journal_details",
         "emerald_journals.db": "journal_details",
