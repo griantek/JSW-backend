@@ -38,14 +38,9 @@ const performFallbackSearch = async (filters) => {
     let fallbackResults = [];
     let dbsToSearch = [];
 
-    // Clone filters and modify for fallback search
+    // Clone filters but preserve search fields
     const fallbackFilters = { ...filters };
     
-    // Ensure search text and fields are preserved for fallback
-    if (filters.searchText && (!filters.searchFields || filters.searchFields.length === 0)) {
-        fallbackFilters.searchFields = ['title'];
-    }
-
     // Remove database-specific filters for initial search
     delete fallbackFilters.databases;
 
@@ -72,19 +67,19 @@ const performFallbackSearch = async (filters) => {
             const tableName = getTableName(db);
             console.log('Table name:', tableName);
             
+            // Make sure to use the filters to build the query
             const { whereClause, params } = buildQuery(fallbackFilters, db);
+            
+            // Build complete query with where clause if it exists
             const query = `SELECT * FROM ${tableName} ${whereClause}`;
             
             console.log('Executing fallback query:', query);
             console.log('With parameters:', params);
 
-            // Use queryFallbackDB instead of queryDB
             const results = await queryFallbackDB(db, query, params);
             console.log(`Found ${results.length} results in ${db}`);
 
             const normalizedResults = normalizeResults(db, results);
-            console.log(`Normalized ${normalizedResults.length} results`);
-            
             fallbackResults = fallbackResults.concat(normalizedResults);
 
         } catch (error) {
@@ -105,6 +100,10 @@ exports.searchJournals = async (req, res) => {
     try {
         let results = [];
         let dbToQuery = [];
+
+        // Determine if we should allow fallback search
+        const allowFallback = filters.searchFields && 
+            filters.searchFields.map(f => f.toLowerCase()).includes('title');
 
         if (filters.databases && filters.databases.includes('Annexure')) {
             // Get initial results from annex.db
@@ -239,11 +238,13 @@ exports.searchJournals = async (req, res) => {
             }
         }
 
-        // If no results found, try fallback search
-        if (results.length === 0) {
-            console.log('No results found in primary search, attempting fallback search...');
+        // Only use fallback search if no results found AND searching by title
+        if (results.length === 0 && allowFallback) {
+            console.log('No results found in primary search and title search detected, attempting fallback search...');
             const fallbackResults = await performFallbackSearch(filters);
             results = fallbackResults;
+        } else if (results.length === 0) {
+            console.log('No results found, skipping fallback search as not searching by title');
         }
 
         // Enhanced deduplication with logging

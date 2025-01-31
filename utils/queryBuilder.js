@@ -112,7 +112,15 @@ const buildQuery = (filters, dbName) => {
     if (filters.searchText && filters.searchFields && filters.searchFields.length > 0) {
         const searchConditions = [];
         const searchFields = filters.searchFields.map(f => f.toLowerCase());
-
+        
+        // Add ISSN search condition
+        if (searchFields.includes('issn')) {
+            const issnMapping = fieldMappings.issn.find(m => m.db === dbName);
+            if (issnMapping) {
+                searchConditions.push(`${issnMapping.field} LIKE ?`);
+                params.push(`%${filters.searchText}%`);
+            }
+        }
         // Handle title search
         if (searchFields.includes('title')) {
             const titleMapping = fieldMappings.title.find(m => m.db === dbName);
@@ -133,7 +141,7 @@ const buildQuery = (filters, dbName) => {
                     params.push(`%${filters.searchText}%`);
                 }
             }
-        // Handle aims & scope only if title is not selected (though this case shouldn't occur)
+            // Handle aims & scope only if title is not selected (though this case shouldn't occur)
         } else if (searchFields.includes('aims & scope') || searchFields.includes('aims and scope')) {
             const aimsMapping = fieldMappings.aimsAndScope.find(m => m.db === dbName);
             if (aimsMapping) {
